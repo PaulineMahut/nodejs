@@ -3,10 +3,20 @@ const fs = require("fs");
 const port = "90";
 const cors = require("cors");
 const mysql = require("mysql");
+const csv = require("csv-parser");
+const csvtojson = require('csvtojson');
+const multer = require("multer");
 
 var inventory = require("./inventory.json");
 var app = express();
 var bodyParser = require("body-parser");
+
+app.use(cors());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+
+//////// BASE DE DONNEES /////////
+
 const db = mysql.createConnection({
   host: "localhost",
 
@@ -16,6 +26,168 @@ const db = mysql.createConnection({
 
   database: "bddnodejs",
 });
+
+app.post("/login", (req, res) => {
+  var user = {
+    email: req.body.email,
+    password: req.body.password
+  }
+  res.json(user);
+  console.log(user);
+
+  if (user.email ) {
+    
+  }
+
+  // let tableUser =
+  // "CREATE TABLE Users" +
+  //   "(Id INT not null AUTO_INCREMENT," +
+  //   "Email VARCHAR(100) NOT NULL," +
+  //   "Password VARCHAR(100) NOT NULL," +
+  //   "PRIMARY KEY (Id))";
+
+});
+
+const stockFile = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, './uploads')
+},
+filename: (req, file, cb) => {
+    cb(null, `${Date.now()}--${file.originalname}`)
+}
+})
+const upload = multer({storage: stockFile})
+
+app.post("/csv", upload.single('file'), (req, res) => {
+  res.json({file: req.file});
+  const path = req.file.path;
+  console.log(path);
+
+  const results = [];
+  fs.createReadStream(`./${path}`)
+    .pipe(csv())
+    .on("data", (data) => results.push(data))
+    .on("end", () => {
+      console.log(results);
+      results.forEach((element) => {
+        var insert = `INSERT INTO Entreprises (Nom, Salaries, CA) VALUES('${element.Nom}', '${element.salaries}', '${element.CA}')`;
+        console.log(insert);
+        db.query(insert, function (err, results) {
+          if (err) throw err;
+    
+          console.log("Elements ajoutés " + element.Nom);
+        });
+      });
+    });
+});
+
+///////// FICHIER CSV LECTURE 1 ////////////
+
+app.get("/csv", (req, res) => {
+  fs.createReadStream("./entreprises.csv")
+    .pipe(csv({}))
+    .on("data", function (data) {
+      try {
+        console.log("Name is: " + data.Nom);
+        console.log("Nombre de salariés is: " + data.salaries);
+        console.log("CA is: " + data.CA);
+
+        //perform the operation
+      } catch (err) {
+        //error handler
+      }
+    })
+    .on("end", function () {
+      //some final operation
+    });
+});
+
+///////// FICHIER CSV LECTURE 2 ////////////
+
+app.get("/csv2", (req, res) => {
+  const results = [];
+  fs.createReadStream("./entreprises.csv")
+    .pipe(csv())
+    .on("data", (data) => results.push(data))
+    .on("end", () => {
+      console.log(results);
+    });
+});
+
+// ENREGISTRER FICHIER CSV EN BDD
+
+app.get("/bddcsv", (req, res) => {
+
+  var dropTableEntreprise = "DROP TABLE IF EXISTS Entreprises";
+  db.query(dropTableEntreprise, function (err, results) {
+    if (err) throw err;
+    console.log("Table Entreprises dropped");
+  });
+
+  var tableEntreprise =
+    "CREATE TABLE Entreprises" +
+    "(Id INT not null AUTO_INCREMENT," +
+    "Nom VARCHAR(100)," +
+    "Salaries VARCHAR(100)," +
+    "CA VARCHAR(100)," +
+    "PRIMARY KEY (Id))";
+  db.query(tableEntreprise, function (err, results) {
+    if (err) throw err;
+    console.log("Table Entreprises created");
+  });
+
+  // const results = [];
+  // fs.createReadStream("./entreprises.csv")
+  //   .pipe(csv())
+  //   .on("data", (data) => results.push(data))
+  //   .on("end", () => {
+  //     console.log(results);
+
+  //     results.forEach((element) => {
+  //       var insert = `INSERT INTO Entreprises (Nom, Salaries, CA) VALUES('${element.Nom}', '${element.salaries}', '${element.CA}')`;
+  //       console.log(insert);
+  //       db.query(insert, function (err, results) {
+  //         if (err) throw err;
+    
+  //         console.log("Elements ajoutés " + element.Nom);
+  //       });
+  //     });
+  //   });
+//   const fileName = "entreprises.csv";
+  
+// csvtojson().fromFile(fileName).then(source => {
+  
+//     // Fetching the data from each row 
+//     // and inserting to the table "sample"
+//     for (var i = 0; i < source.length; i++) {
+//         var Nom = source[i]["Nom"],
+//             Salaries = source[i]["salaries"],
+//             CA = source[i]["CA"]
+  
+//         var insertStatement = 
+//         `INSERT INTO Entreprises values(?, ?, ?)`;
+//         var items = [Nom, Salaries, CA];
+  
+//         // Inserting data of current row
+//         // into database
+//         db.query(insertStatement, items, 
+//             (err, results, fields) => {
+//             if (err) {
+//                 console.log(
+//     "Unable to insert item at row ", i + 1);
+//                 return console.log(err);
+//             }
+//         });
+//     }
+//     console.log(
+// "All items stored into database successfully");
+// });
+
+ 
+});
+
+
+// CONNECTER A LA BASE DE DONNEES ET AJOUTER TABLE ARTICLES + DONNEES
 
 db.connect(function (err) {
   if (err) throw err;
@@ -56,12 +228,8 @@ app.get("/table", (req, res) => {
       console.log("Elements ajoutés " + element.id);
     });
   });
-
 });
 
-app.use(cors());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
 
 app.get("/", (req, res) => {
   res.json(inventory);
@@ -70,6 +238,8 @@ app.get("/", (req, res) => {
 app.get("/articles", (req, res) => {
   res.json(inventory);
 });
+
+app.get("/inscription", (req, res) => {});
 
 app.post("/articles", (req, res) => {
   console.log("req.body", req.body);
@@ -129,7 +299,7 @@ app.post("/articles", (req, res) => {
 });
 
 // app.delete("/deletearticle", (req, res) => {
-//     console.log("req.body", req.body); 
+//     console.log("req.body", req.body);
 //     const id = Number(req.body.id);
 //     const index = articles.findIndex((art, index) =>art.id == id);
 
@@ -148,4 +318,4 @@ app.listen(port, () => {
 
 //fichier qui fait office de server
 //sudo node server.js pour lancer le server
-//express=framework
+//express= framework
