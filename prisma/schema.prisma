@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Articles {
+  Id          Int     @id @default(autoincrement())
+  Title       String? @db.VarChar(100)
+  Description String? @db.VarChar(500)
+  Price       Float?  @db.Float
+  Currency    String? @db.VarChar(1)
+  Brand       String? @db.VarChar(50)
+}
+
+model Entreprises {
+  Id       Int     @id @default(autoincrement())
+  Nom      String? @db.VarChar(100)
+  Salaries String? @db.VarChar(100)
+  CA       String? @db.VarChar(100)
+}
+
+model user {
+  id       Int    @id @default(autoincrement())
+  email    String @db.VarChar(60)
+  password String @db.VarChar(20)
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model Users {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(100)
+  email String @db.VarChar(100) @unique
+  password String @db.VarChar(100)
+  role Role @default(USER)
+  }

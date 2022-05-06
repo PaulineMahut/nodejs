@@ -1,21 +1,68 @@
+//#region REQUIRE
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+// console.log("prisma", prisma);
+
+const bcrypt = require("bcrypt");
 const express = require("express");
 const fs = require("fs");
 const port = "90";
 const cors = require("cors");
 const mysql = require("mysql");
 const csv = require("csv-parser");
-const csvtojson = require('csvtojson');
+const csvtojson = require("csvtojson");
 const multer = require("multer");
+const htmlspecialchars = require("htmlspecialchars");
+const striptags = require("striptags");
 
 var inventory = require("./inventory.json");
 var app = express();
 var bodyParser = require("body-parser");
+const { cp } = require("fs/promises");
 
 app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+//#endregion
 
-//////// BASE DE DONNEES /////////
+(async function () {
+  var password = "toto";
+  var user1 = {};
+
+  // bcrypt.hash(password, 4, async function (err, hash) {
+  //   // password = hash;
+  //   user1 = await prisma.users.create({
+  //     data: {
+  //       name: "toto",
+  //       email: "toto@toto.fr",
+  //       password: hash
+  //     }
+  //   });
+  // });
+
+  // const foundedUser = await prisma.users.findUnique({
+  //   where: {
+  //     email: "toto@toto.fr",
+  //   },
+  // });
+
+  // console.log("foundeduser", foundedUser);
+
+  // if (!foundedUser) {
+  //   console.warn("sorry no item found");
+  // }
+
+  // var isValidUser = false;
+  // bcrypt.compare(password, foundedUser?.password, function (err, result) {
+  //   isValidUser = result;
+  //   result && console.log("Trouvé"); // renvoit derniere valeur fausse entre les deux
+  // });
+
+  // console.log("isValidUser", isValidUser);
+})(); //execute tout de suite
+
+//////// BASE DE DONNEES CONNECTION /////////
 
 const db = mysql.createConnection({
   host: "localhost",
@@ -27,16 +74,117 @@ const db = mysql.createConnection({
   database: "bddnodejs",
 });
 
+/////// LOGIN CHECK /////////
+
+//#region LOGIN CHECK
+
+app.post("/login_check", async (req, res) => {
+  const user_email = htmlspecialchars(striptags(req.body.email));
+  const password = htmlspecialchars(striptags(req.body.password));
+  var foundedUser;
+
+  if (!user_email || !password) {
+    res.status(403).send("request is wrong formated")
+  }
+
+  try {
+    foundedUser = await prisma.users.findUnique({
+      where: {
+        email: user_email
+      }
+    });
+  } catch (error) {
+    res.status(401).send(`findUnique_ERROR ${error}`);
+    return;
+  }
+
+  if (!foundedUser) {
+    console.warn("l'utilisateur n'existe pas");
+    res.status(401).send("Invalid credencials");
+    return;
+  }
+
+  try {
+    bcrypt.compare(password, foundedUser?.password, function(err, result) {
+      if (!result) {
+        res.status(401).send("Utilisateur ou mot de passe incorrect");
+        return;
+      }
+      const { id, name, email, role } = foundedUser;
+      res.send({id,name,email,role});
+  });
+  } catch (error) {
+    res.status(401).send("err" + error);
+
+    return;
+  }
+  // var isValidUser = false;
+
+
+
+  // if (!isValidUser) {
+  //   res.status(401).send("Unauthorized")
+  // }
+});
+
+//#endregion
+
+
+///////  CREATE USER /////////////
+
+app.post("/adduser", async (req, res) => {
+  const email = htmlspecialchars(striptags(req.body.email));
+  const name = htmlspecialchars(striptags(req.body.name));
+  const password = htmlspecialchars(striptags(req.body.password));
+
+  if (!email || !password) {
+    res.statusCode(403).send("request is wrong formated")
+  }
+
+  const foundedUser = await prisma.users.findUnique({
+    where: {
+      email: email,
+    },
+  });
+
+  if (foundedUser) {
+    res.send("email already exist");
+    return
+  };
+
+   bcrypt.hash(password, 4, async function (err, hash) {
+    // password = hash;
+    user = await prisma.users.create({
+      data: {
+        name: name,
+        email: email,
+        password: hash
+      }
+    });
+    res.send(user)
+  });
+
+});
+
 app.post("/login", (req, res) => {
   var user = {
     email: req.body.email,
-    password: req.body.password
-  }
+    password: req.body.password,
+  };
   res.json(user);
-  console.log(user);
+  // console.log(user);
 
-  if (user.email ) {
-    
+  data.user.forEach((element) => {
+    var insert = `INSERT INTO user (email, password) VALUES('${element.email}', '${element.password}')`;
+    console.log(insert);
+    db.query(insert, function (err, results) {
+      if (err) throw err;
+
+      console.log("Elements ajoutés " + element);
+    });
+  });
+
+  if (user.email) {
   }
 
   // let tableUser =
@@ -45,21 +193,20 @@ app.post("/login", (req, res) => {
   //   "Email VARCHAR(100) NOT NULL," +
   //   "Password VARCHAR(100) NOT NULL," +
   //   "PRIMARY KEY (Id))";
-
 });
 
 const stockFile = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, './uploads')
-},
-filename: (req, file, cb) => {
-    cb(null, `${Date.now()}--${file.originalname}`)
-}
-})
-const upload = multer({storage: stockFile})
+    cb(null, "./uploads");
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}--${file.originalname}`);
+  },
+});
+const upload = multer({ storage: stockFile });
 
-app.post("/csv", upload.single('file'), (req, res) => {
-  res.json({file: req.file});
+app.post("/csv", upload.single("file"), (req, res) => {
+  res.json({ file: req.file });
   const path = req.file.path;
   console.log(path);
 
@@ -74,7 +221,7 @@ app.post("/csv", upload.single('file'), (req, res) => {
         console.log(insert);
         db.query(insert, function (err, results) {
           if (err) throw err;
-    
+
           console.log("Elements ajoutés " + element.Nom);
         });
       });
@@ -117,7 +264,6 @@ app.get("/csv2", (req, res) => {
 // ENREGISTRER FICHIER CSV EN BDD
 
 app.get("/bddcsv", (req, res) => {
-
   var dropTableEntreprise = "DROP TABLE IF EXISTS Entreprises";
   db.query(dropTableEntreprise, function (err, results) {
     if (err) throw err;
@@ -136,6 +282,7 @@ app.get("/bddcsv", (req, res) => {
     console.log("Table Entreprises created");
   });
 
+{
   // const results = [];
   // fs.createReadStream("./entreprises.csv")
   //   .pipe(csv())
@@ -148,44 +295,43 @@ app.get("/bddcsv", (req, res) => {
   //       console.log(insert);
   //       db.query(insert, function (err, results) {
   //         if (err) throw err;
-    
+
   //         console.log("Elements ajoutés " + element.Nom);
   //       });
   //     });
   //   });
-//   const fileName = "entreprises.csv";
-  
-// csvtojson().fromFile(fileName).then(source => {
-  
-//     // Fetching the data from each row 
-//     // and inserting to the table "sample"
-//     for (var i = 0; i < source.length; i++) {
-//         var Nom = source[i]["Nom"],
-//             Salaries = source[i]["salaries"],
-//             CA = source[i]["CA"]
-  
-//         var insertStatement = 
-//         `INSERT INTO Entreprises values(?, ?, ?)`;
-//         var items = [Nom, Salaries, CA];
-  
-//         // Inserting data of current row
-//         // into database
-//         db.query(insertStatement, items, 
-//             (err, results, fields) => {
-//             if (err) {
-//                 console.log(
-//     "Unable to insert item at row ", i + 1);
-//                 return console.log(err);
-//             }
-//         });
-//     }
-//     console.log(
-// "All items stored into database successfully");
-// });
+  //   const fileName = "entreprises.csv";
 
- 
+  // csvtojson().fromFile(fileName).then(source => {
+
+  //     // Fetching the data from each row
+  //     // and inserting to the table "sample"
+  //     for (var i = 0; i < source.length; i++) {
+  //         var Nom = source[i]["Nom"],
+  //             Salaries = source[i]["salaries"],
+  //             CA = source[i]["CA"]
+
+  //         var insertStatement =
+  //         `INSERT INTO Entreprises values(?, ?, ?)`;
+  //         var items = [Nom, Salaries, CA];
+
+  //         // Inserting data of current row
+  //         // into database
+  //         db.query(insertStatement, items,
+  //             (err, results, fields) => {
+  //             if (err) {
+  //                 console.log(
+  //     "Unable to insert item at row ", i + 1);
+  //                 return console.log(err);
+  //             }
+  //         });
+  //     }
+  //     console.log(
+  // "All items stored into database successfully");
+  // });
+
+}
 });
-
 
 // CONNECTER A LA BASE DE DONNEES ET AJOUTER TABLE ARTICLES + DONNEES
 
@@ -197,6 +343,8 @@ db.connect(function (err) {
   //         console.log("Base de données créée !");
   //       });
 });
+
+///////  AJOUTER ET REMPLIR TABLE ARTICLES /////////
 
 app.get("/table", (req, res) => {
   var sql2 = "DROP TABLE IF EXISTS Articles";
@@ -230,7 +378,6 @@ app.get("/table", (req, res) => {
   });
 });
 
-
 app.get("/", (req, res) => {
   res.json(inventory);
 });
@@ -240,6 +387,8 @@ app.get("/articles", (req, res) => {
 });
 
 app.get("/inscription", (req, res) => {});
+
+/////// AFFICHER LES ARTICLES A PARTIR DE FICHIER JSON /////////:
 
 app.post("/articles", (req, res) => {
   console.log("req.body", req.body);
