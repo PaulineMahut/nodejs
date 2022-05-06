@@ -166,6 +166,9 @@ app.post("/adduser", async (req, res) => {
 
 });
 
+
+
+
 app.post("/login", (req, res) => {
   var user = {
     email: req.body.email,
@@ -194,6 +197,17 @@ app.post("/login", (req, res) => {
   //   "Password VARCHAR(100) NOT NULL," +
   //   "PRIMARY KEY (Id))";
 });
+
+
+
+
+//////////// MODIFIER USER ///////////////////////
+
+
+app.post("modify", (req, res) => {
+
+});
+
 
 const stockFile = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -228,7 +242,7 @@ app.post("/csv", upload.single("file"), (req, res) => {
     });
 });
 
-///////// FICHIER CSV LECTURE 1 ////////////
+///////// FICHIER CSV LECTURE 1 //////////////////
 
 app.get("/csv", (req, res) => {
   fs.createReadStream("./entreprises.csv")
